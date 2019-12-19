@@ -1,0 +1,2 @@
+g++ Client.cpp -lpthread -o cl
+g++ Server.cpp -lpthread -o ser
