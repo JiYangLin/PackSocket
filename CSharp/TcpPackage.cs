@@ -1,15 +1,13 @@
 ﻿using System;
 using System.Collections.Generic;
-using System.IO;
 using System.Net;
 using System.Net.Sockets;
 using System.Text;
 using System.Threading;
-using System.Threading.Tasks;
 
 
 
-namespace MySocket
+namespace PackSocket
 {
     //错误时接收数据为null
     public interface IServerRev
@@ -254,7 +252,7 @@ namespace MySocket
 
 
 //服务端
-namespace MySocket
+namespace PackSocket
 {
     public class SocketServer
     {
@@ -330,7 +328,7 @@ namespace MySocket
 
 
 //客户端
-namespace MySocket
+namespace PackSocket
 {
     public class SocketClient
     {
