@@ -335,7 +335,6 @@ namespace MySocket
     public class SocketClient
     {
         Connect m_Connect = null;
-        newMsgMark m_newMsgMark = new newMsgMark();
         public void Start(byte mark, string IP, int prort, IClientRev revProc)
         {
             IPAddress address = IPAddress.Parse(IP);

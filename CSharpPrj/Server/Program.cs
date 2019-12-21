@@ -13,7 +13,7 @@ namespace Server
         {
             if (null == recvBytes) return;
 
-            string str = Encoding.Default.GetString(recvBytes);
+            string str = Encoding.Default.GetString(recvBytes, 0, (int)revSize + 1);
 
             Console.WriteLine(str);
         }
