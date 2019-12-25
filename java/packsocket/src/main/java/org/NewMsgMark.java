@@ -23,9 +23,6 @@ class newMsgMark
         for (int i = 0; i < guidLen; ++i)
             if (NewMsgMarkStrEnd[i] != recvBuf[i + EndGDIDPos]) return false;
 
-        for (int i = guidLen + (int)Param.NewMsg_Size_LEN; i < EndGDIDPos; ++i)
-            if (0 != recvBuf[i]) return false;
-
         return true;
     }
 }

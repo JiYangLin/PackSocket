@@ -46,15 +46,15 @@ public class SocketServer extends Thread
     }
 
     
-    public void SendToAllConn(byte[] msg, int msgSize)
+    public void SendToAllConn(int cmd,byte[] msg, int msgSize)
     {
-        SendToConn(msg, msgSize,Param.ConnMark_Def);
+        SendToConn(cmd,msg, msgSize,Param.ConnMark_Def);
     }
-    public void SendToMarkConn(byte mark, byte[] msg, int msgSize)
+    public void SendToMarkConn(byte mark,int cmd, byte[] msg, int msgSize)
     {
-        SendToConn(msg, msgSize, mark);
+        SendToConn(cmd,msg, msgSize, mark);
     }
-    void SendToConn(byte[] msg, int msgSize, byte mark)
+    void SendToConn(int cmd,byte[] msg, int msgSize, byte mark)
     {
         synchronized(lock){      
         for (Connect conn : SocketConnect)
@@ -62,7 +62,7 @@ public class SocketServer extends Thread
             if (!conn.connectNormal) continue;
             if (mark != (Byte)Param.ConnMark_Def)
                 if (mark != conn.GetConnMark()) continue;
-            conn.Send(msg, msgSize);
+            conn.Send(cmd,msg, msgSize);
         }
         }
     }

@@ -4,7 +4,7 @@ import java.util.Scanner;
 
 class Ser implements IServerRev
 {
-    public void Rev(byte mark, byte[] recvBytes, int revSize, String erroMsg) {
+    public void Rev(byte mark,int cmd, byte[] recvBytes, int revSize) {
         if (null == recvBytes) return;
 
         String str = new String(recvBytes,0,revSize);  
@@ -23,16 +23,33 @@ class Ser implements IServerRev
         {
             System.out.println("输入客户端 mark");
 
-            int mark = input.nextInt();
+            int mark = Ser.GetMark();
 
             System.out.println("输入向客户端发送内容 ");
             str = input.next();
             byte[] bytes = str.getBytes();
 
-            m_SocketServer.SendToMarkConn((byte)mark, bytes, bytes.length);
+            m_SocketServer.SendToMarkConn((byte)mark,10, bytes, bytes.length);
         }
     }
-
+    public static int GetMark()
+    {
+        Scanner input = new Scanner(System.in);
+        while(true)
+        {
+            try
+            {
+               String str = input.next();
+               int mark = Integer.parseInt(str);
+                return mark;
+            }catch(Exception e)
+            {
+                System.out.println("请输入正确数字");
+                continue;
+            }
+        }
+          
+    }
     SocketServer m_SocketServer = new SocketServer();
 
 
@@ -40,7 +57,7 @@ class Ser implements IServerRev
 
 class Client implements IClientRev
 {
-    public void Rev(byte[] recvBytes, int revSize, String erroMsg) {
+    public void Rev(int cmd,byte[] recvBytes, int revSize) {
         if (null == recvBytes)
             return;
 
@@ -51,22 +68,21 @@ class Client implements IClientRev
     {
         System.out.println("=====客户端====");
 
-        Scanner input = new Scanner(System.in);
+
         String str;
         System.out.println("输入连接 mark");
     
-        int mark = input.nextInt();
-
+        int mark = Ser.GetMark();
         m_SocketClient.Start((byte)mark, "localhost", 1234, this);
 
-
+        Scanner input = new Scanner(System.in);
         while (true)
         {
             System.out.println("str:");
             str = input.next();
             byte[] bytes = str.getBytes();
 
-            m_SocketClient.Send(bytes,bytes.length);
+            m_SocketClient.Send(10,bytes,bytes.length);
         }
     }
 
@@ -77,10 +93,20 @@ public class App
 {
     public static void main( String[] args )
     {
-        //Ser ser = new Ser();
-        //ser.Run();
 
-        Client cl = new Client();
-        cl.Run();
+        System.out.println("Proc Server?(Y/N)");
+
+        Scanner input = new Scanner(System.in);
+        String str = input.next();
+        if (str.equals("Y") || str.equals("y"))
+        {
+            Ser ser = new Ser();
+            ser.Run();
+        }
+        else
+        {
+            Client cl = new Client();
+            cl.Run();
+        }
     }
 }

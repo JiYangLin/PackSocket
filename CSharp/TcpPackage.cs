@@ -9,27 +9,31 @@ using System.Threading;
 
 namespace PackSocket
 {
-    //错误时接收数据为null
     public interface IServerRev
     {
-        void Rev(byte mark, byte[] recvBytes, uint revSize, string erroMsg = "");
+        void Rev(byte mark, uint cmd, byte[] recvBytes,int revlen);
     }
     public interface IClientRev
     {
-        void Rev(byte[] recvBytes, uint revSize, string erroMsg = "");
+        void Rev(uint cmd, byte[] recvBytes,int revlen);
     }
 
-    enum Param
+    class Param
     {
-        REV_LEN = 1024,//固定每个数据长度
-        MAX_LISTEN_NUM = 20,
+        public static int REV_LEN = 1024;
+        public static int MAX_LISTEN_NUM = 20;
 
-        GUID_LEN = 32,
+        public static int GUID_LEN = 16;
 
-        NewMsg_Size_LEN = 4,
+        public static int NewMsg_Size_LEN = 4;
+        public static int CMD_LEN = 4;
 
-        MarkLen = 1,
-        ConnMark_Def = 0xFF,
+        public static int Pos_cmd = 20;
+        public static int Pos_msg = 24;
+        public static int Pos_NewMsgMarkStrEnd = 1008;
+        public static int newMsgMaxDataSpace = 984;
+
+        public static int MarkLen = 1;
     }
     class newMsgMark
     {
@@ -41,114 +45,117 @@ namespace PackSocket
             string _NewMsgMarkStrEnd = "CE1D1E7C9DBF4951BB414B6D9D2AA1C1";
             NewMsgMarkStrEnd = Encoding.Default.GetBytes(_NewMsgMarkStrEnd);
         }
-        public Byte[] NewMsgMarkStr { get; set; }
-        public Byte[] NewMsgMarkStrEnd { get; set; }
-        public bool isNewMsgMark(Byte[] recvBuf)
+        public byte[] NewMsgMarkStr { get; set; }
+        public byte[] NewMsgMarkStrEnd { get; set; }
+        public bool isNewMsgMark(byte[] recvBuf)
         {
-            int guidLen = (int)Param.GUID_LEN;
-            for (int i = 0; i < guidLen; ++i)
+            for (int i = 0; i < Param.GUID_LEN; ++i)
                 if (NewMsgMarkStr[i] != recvBuf[i]) return false;
 
-
-            int EndGDIDPos = (int)Param.REV_LEN - guidLen;
-            for (int i = 0; i < guidLen; ++i)
-                if (NewMsgMarkStrEnd[i] != recvBuf[i + EndGDIDPos]) return false;
-
-            for (int i = guidLen + (int)Param.NewMsg_Size_LEN; i < EndGDIDPos; ++i)
-                if (0 != recvBuf[i]) return false;
+            for (int i = 0; i < Param.GUID_LEN; ++i)
+                if (NewMsgMarkStrEnd[i] != recvBuf[i + Param.Pos_NewMsgMarkStrEnd]) return false;
 
             return true;
         }
     }
 
-    delegate void RevFinish(byte[] revByte, UInt32 revSize);
+    delegate void RevFinish(uint cmd, byte[] revByte,int revlen);
     class MsgCtl
     {
         class Receiver
         {
-            UInt32 m_revSize = 0;
-            UInt32 m_msgSize = 0;
-            Byte[] m_buf = new Byte[(int)Param.REV_LEN];
+            uint m_revSize = 0;
+            uint m_msgSize = 0;
+            uint m_cmd = 0;
+            byte[] m_buf = new byte[Param.REV_LEN];
             newMsgMark m_newMsgMark = new newMsgMark();
 
-            public void rev(Byte[] recvBuf, RevFinish Fun)
+            public void rev(byte[] recvBuf, RevFinish Fun)
             {
                 if (m_newMsgMark.isNewMsgMark(recvBuf))
                 {
                     m_revSize = 0;
-                    m_msgSize = BitConverter.ToUInt32(recvBuf, (int)Param.GUID_LEN);
-                    if (m_buf.Length < m_msgSize) m_buf = new Byte[m_msgSize];
+                    m_msgSize = BitConverter.ToUInt32(recvBuf, Param.GUID_LEN);
+                    m_cmd = BitConverter.ToUInt32(recvBuf, Param.Pos_cmd );
+                    if(m_msgSize > m_buf.Length) m_buf = new byte[m_msgSize];
+
+                    if (m_msgSize <= Param.newMsgMaxDataSpace)
+                    {
+                        Array.Copy(recvBuf, Param.Pos_msg, m_buf, 0, m_msgSize);
+                        MsgFinish(Fun);
+                    }
                     return;
                 }
 
 
-                int CpySize = (int)Param.REV_LEN;
-                if (m_revSize + (int)Param.REV_LEN > m_msgSize) CpySize = (int)(m_msgSize - m_revSize);
-
-
-                if (0 == m_msgSize) return;
-                if (m_buf.Length < m_revSize + CpySize) return;
-
+                int CpySize = Param.REV_LEN;
+                if (m_revSize + Param.REV_LEN > m_msgSize) CpySize = (int)(m_msgSize - m_revSize);
 
                 Array.Copy(recvBuf, 0, m_buf, m_revSize, CpySize);
                 m_revSize = m_revSize + (uint)CpySize;
 
-
                 if (m_revSize != m_msgSize) return;
 
-                Fun(m_buf, m_revSize);
+                MsgFinish(Fun);
+            }
+            void MsgFinish(RevFinish Fun)
+            {
+                Fun(m_cmd, m_buf,(int)m_msgSize);
                 m_msgSize = 0;
                 m_revSize = 0;
             }
         }
         class Sender
         {
-            byte[] SendBuf = new byte[(int)Param.REV_LEN];
+            byte[] SendBuf = new byte[Param.REV_LEN];
             newMsgMark m_newMsgMark = new newMsgMark();
 
-            public void SendMsg(Socket sock, byte[] msg, uint msgSize)
+            public void SendMsg(Socket sock, uint cmd, byte[] msg, uint msgSize)
             {
-                Array.Clear(SendBuf, 0, (int)Param.REV_LEN);
-
-                Array.Copy(m_newMsgMark.NewMsgMarkStr, 0, SendBuf, 0, (int)Param.GUID_LEN);
+                Array.Copy(m_newMsgMark.NewMsgMarkStr, 0, SendBuf, 0, Param.GUID_LEN);
                 byte[] sizeBytes = BitConverter.GetBytes(msgSize);
-                Array.Copy(sizeBytes, 0, SendBuf, (int)Param.GUID_LEN, sizeBytes.Length);
-                Array.Copy(m_newMsgMark.NewMsgMarkStrEnd, 0, SendBuf, (int)Param.REV_LEN - (int)Param.GUID_LEN, (int)Param.GUID_LEN);
+                Array.Copy(sizeBytes, 0, SendBuf, Param.GUID_LEN, sizeBytes.Length);
+                byte[] cmdBytes = BitConverter.GetBytes(cmd);
+                Array.Copy(cmdBytes, 0, SendBuf, Param.Pos_cmd, cmdBytes.Length);
+                Array.Copy(m_newMsgMark.NewMsgMarkStrEnd, 0, SendBuf, Param.Pos_NewMsgMarkStrEnd, Param.GUID_LEN);
 
-
-                sock.Send(SendBuf, (int)Param.REV_LEN, 0);
+                if (msgSize <= Param.newMsgMaxDataSpace)
+                {
+                    Array.Copy(msg, 0, SendBuf, Param.Pos_msg, msgSize);
+                    sock.Send(SendBuf, Param.REV_LEN, 0);
+                    return;
+                }
+                sock.Send(SendBuf, Param.REV_LEN, 0);
 
                 uint hasSendSize = 0;
                 while (true)
                 {
-                    Array.Clear(SendBuf, 0, (int)Param.REV_LEN);
-
-                    if (msgSize <= (int)Param.REV_LEN)
+                    if (msgSize <= Param.REV_LEN)
                     {
                         Array.Copy(msg, hasSendSize, SendBuf, 0, msgSize);
-                        sock.Send(SendBuf, (int)Param.REV_LEN, 0);
+                        sock.Send(SendBuf, Param.REV_LEN, 0);
                         return;
                     }
 
 
-                    Array.Copy(msg, hasSendSize, SendBuf, 0, (int)Param.REV_LEN);
-                    sock.Send(SendBuf, (int)Param.REV_LEN, 0);
+                    Array.Copy(msg, hasSendSize, SendBuf, 0, Param.REV_LEN);
+                    sock.Send(SendBuf, Param.REV_LEN, 0);
 
-                    hasSendSize += (int)Param.REV_LEN;
-                    msgSize -= (int)Param.REV_LEN;
+                    hasSendSize += (uint)Param.REV_LEN;
+                    msgSize -= (uint)Param.REV_LEN;
                 }
             }
         }
 
 
 
-        public void Rev(Byte[] recvBuf, RevFinish Fun)
+        public void Rev(byte[] recvBuf, RevFinish Fun)
         {
             m_Receiver.rev(recvBuf, Fun);
         }
-        public void Send(Socket sock, byte[] msg, uint msgSize)
+        public void Send(Socket sock, uint cmd, byte[] msg, uint msgSize)
         {
-            m_Sender.SendMsg(sock, msg, msgSize);
+            m_Sender.SendMsg(sock, cmd, msg, msgSize);
         }
         Receiver m_Receiver = new Receiver();
         Sender m_Sender = new Sender();
@@ -162,14 +169,13 @@ namespace PackSocket
         IServerRev m_IServerRev = null;
         IClientRev m_IClientRev = null;
         MsgCtl m_MsgCtl = new MsgCtl();
-        byte m_ConnMark = (byte)Param.ConnMark_Def;
+        byte m_ConnMark = 0xFF;
         newMsgMark m_newMsgMark = new newMsgMark();
         public bool connectNormal { get; set; }
         public byte GetConnMark() { return m_ConnMark; }
 
         public void Close()
         {
-            revThread.Abort();
             conn.Close();
         }
         public Connect(Socket _conn, IServerRev _IServerRev, IClientRev _IClientRev)
@@ -186,10 +192,10 @@ namespace PackSocket
         }
 
 
-        void Rev(byte[] msg, uint msgSize, string erro)
+        void Rev(uint cmd, byte[] msg,int msglen)
         {
-            if (null != m_IServerRev) m_IServerRev.Rev(m_ConnMark, msg, msgSize, erro);
-            else m_IClientRev.Rev(msg, msgSize, erro);
+            if (null != m_IServerRev) m_IServerRev.Rev(m_ConnMark, cmd, msg, msglen);
+            else m_IClientRev.Rev(cmd, msg, msglen);
         }
         void _OnRev()
         {
@@ -199,45 +205,43 @@ namespace PackSocket
             }
             catch (Exception e)
             {
-                //错误时接收数据为null作为通知
-                Rev(null, 0, e.Message);
+                Rev(0xFFFFFFFF, null, 0);
                 connectNormal = false;
             }
         }
 
         void OnRev()
         {
-            byte[] recvBytes = new byte[(int)Param.REV_LEN];
+            byte[] recvBytes = new byte[Param.REV_LEN];
             int recBufPos = 0;
             int BufLen = 0;
 
             if (m_IServerRev != null)
             {
-                conn.Receive(recvBytes, 0, (int)Param.MarkLen, 0);
+                conn.Receive(recvBytes, 0, Param.MarkLen, 0);
                 m_ConnMark = recvBytes[0];
             }
 
             while (true)
             {
 
-                BufLen = conn.Receive(recvBytes, recBufPos, (int)Param.REV_LEN - recBufPos, 0);
+                BufLen = conn.Receive(recvBytes, recBufPos, Param.REV_LEN - recBufPos, 0);
                 recBufPos += BufLen;
 
-                ////接收到足够一帧大小 Param.REV_LEN 后再执行
-                if (recBufPos != (int)Param.REV_LEN) continue;
+                if (recBufPos != Param.REV_LEN) continue;
                 recBufPos = 0;
 
-                m_MsgCtl.Rev(recvBytes, (byte[] revByte, uint revSize) =>
+                m_MsgCtl.Rev(recvBytes, (uint cmd, byte[] revByte,int revLen) =>
                 {
-                    Rev(revByte, revSize, "");
+                    Rev(cmd, revByte, revLen);
                 });
             }
         }
-        public bool Send(byte[] msg, uint msgSize)
+        public bool Send(uint cmd, byte[] msg, uint msgSize)
         {
             try
             {
-                m_MsgCtl.Send(conn, msg, msgSize);
+                m_MsgCtl.Send(conn, cmd, msg, msgSize);
             }
             catch (Exception ex)
             {
@@ -274,31 +278,31 @@ namespace PackSocket
             threadSocket.IsBackground = true;
             threadSocket.Start();
         }
-        public void SendToAllConn(byte[] msg, uint msgSize)
+        public void SendToAllConn(uint cmd, byte[] msg, uint msgSize)
         {
-            SendToConn(msg, msgSize);
+            SendToConn(cmd, msg, msgSize);
         }
-        public void SendToMarkConn(byte mark, byte[] msg, uint msgSize)
+        public void SendToMarkConn(byte mark, uint cmd, byte[] msg, uint msgSize)
         {
-            SendToConn(msg, msgSize, mark);
+            SendToConn(cmd, msg, msgSize, mark);
         }
-        void SendToConn(byte[] msg, uint msgSize, byte mark = (byte)Param.ConnMark_Def)
+        void SendToConn(uint cmd, byte[] msg, uint msgSize, byte mark = 0xFF)
         {
             mutex.WaitOne();
             foreach (Connect conn in SocketConnect)
             {
                 if (!conn.connectNormal) continue;
 
-                if (mark != (Byte)Param.ConnMark_Def)
+                if (mark != 0xFF)
                     if (mark != conn.GetConnMark()) continue;
-                conn.Send(msg, msgSize);
+                conn.Send(cmd, msg, msgSize);
             }
             mutex.ReleaseMutex();
         }
 
         void Accept()
         {
-            socketServer.Listen((int)Param.MAX_LISTEN_NUM);
+            socketServer.Listen(Param.MAX_LISTEN_NUM);
             while (true)
             {
                 Socket connSocket = socketServer.Accept();
@@ -348,10 +352,10 @@ namespace PackSocket
 
 
         }
-        public bool Send(byte[] msg, uint msgSize)
+        public bool Send(uint cmd, byte[] msg, uint msgSize)
         {
             if (null == m_Connect) return false;
-            return m_Connect.Send(msg, msgSize);
+            return m_Connect.Send(cmd, msg, msgSize);
         }
     }
 }

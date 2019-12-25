@@ -6,13 +6,30 @@ namespace CSharp
 {
     class Ser : IServerRev
     {
-        void IServerRev.Rev(Byte mark, byte[] recvBytes, UInt32 revSize, string erroMsg)
+        void IServerRev.Rev(byte mark, uint cmd, byte[] recvBytes, int revlen)
         {
             if (null == recvBytes) return;
 
-            string str = Encoding.Default.GetString(recvBytes, 0, (int)revSize + 1);
+            string str = Encoding.Default.GetString(recvBytes, 0, revlen);
 
             Console.WriteLine(str);
+        }
+        public static int GetMark()
+        {
+            while(true)
+            {
+                try
+                {
+                   String str = Console.ReadLine();
+                   int mark = Convert.ToInt32(str);
+                    return mark;
+                }catch(Exception e)
+                {
+                    Console.WriteLine("请输入正确数字");
+                    continue;
+                }
+            }
+              
         }
         public void Run()
         {
@@ -24,15 +41,13 @@ namespace CSharp
             string str;
             while (true)
             {
-                Console.WriteLine("输入客户端 mark");
+                Console.WriteLine("输入客户端 mark:");
+                int mark = Ser.GetMark();
 
-                str = Console.ReadLine();
-                int mark = Convert.ToInt32(str);
-
-                Console.WriteLine("输入向客户端发送内容 ");
+                Console.WriteLine("输入向客户端发送内容:");
                 str = Console.ReadLine();
                 byte[] bytes = Encoding.Default.GetBytes(str);
-                m_SocketServer.SendToMarkConn((byte)mark, bytes, (UInt32)bytes.Length);
+                m_SocketServer.SendToMarkConn((byte)mark, 0,bytes, (UInt32)bytes.Length);
 
             }
         }
@@ -42,10 +57,10 @@ namespace CSharp
 
     class Client : IClientRev
     {
-        void IClientRev.Rev(byte[] recvBytes, UInt32 revSize, string erroMsg)
+        void IClientRev.Rev(uint cmd, byte[] recvBytes, int revlen )
         {
             if (null == recvBytes) return;
-            string str = Encoding.Default.GetString(recvBytes, 0, (int)revSize + 1);
+            string str = Encoding.Default.GetString(recvBytes, 0, revlen);
 
             Console.WriteLine(str);
         }
@@ -53,21 +68,19 @@ namespace CSharp
         {
             Console.WriteLine("=====客户端====");
 
-            string str;
-            Console.WriteLine("输入连接 mark");
-            str = Console.ReadLine();
-            int mark = Convert.ToInt32(str);
-
+         
+            Console.WriteLine("输入连接 mark:");
+            int mark = Ser.GetMark();
             m_SocketClient.Start((byte)mark, "127.0.0.1", 1234, this);
 
 
             while (true)
             {
-                Console.WriteLine("str:");
-                str = Console.ReadLine();
+                Console.WriteLine("输入向服务器发送内容:");
+                String str = Console.ReadLine();
                 byte[] bytes = Encoding.Default.GetBytes(str);
 
-                m_SocketClient.Send(bytes, (UInt32)bytes.Length);
+                m_SocketClient.Send(0,bytes, (UInt32)bytes.Length);
             }
         }
 
@@ -76,15 +89,22 @@ namespace CSharp
 
 
 
-    class Program
+    public class Program
     {
         static void Main(string[] args)
         {
-            //Ser ser = new Ser();
-            //ser.Run();
-
-            Client cl = new Client();
-            cl.Run();
+            Console.WriteLine("Proc Server?(Y/N)");
+            string str = Console.ReadLine();
+	        if (str == "Y" || str == "y")
+	        {
+	        	Ser ser = new Ser();
+	        	ser.Run();
+	        }
+	        else
+	        {
+	        	Client cl = new Client();
+	        	cl.Run();
+	        }
         }
     }
 }

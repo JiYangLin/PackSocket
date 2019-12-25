@@ -20,13 +20,18 @@ using namespace std;
 
 
 #define  MAX_CONNECT_NUM  20
-#define  SOCKET_REV_BUF_SIZE     1024   //固定每个数据长度
+#define  SOCKET_REV_BUF_SIZE     1024   
 
-#define  GUID_LEN    32
+#define  GUID_LEN    16
 #define  NewMsgMarkStr    "6DB62435625348A28426C876F6B04A88"
 #define  NewMsgMarkStrEnd "CE1D1E7C9DBF4951BB414B6D9D2AA1C1"
 #define  NewMsg_Size_LEN  4
-typedef  u_int32_t NewMsgSizeType;
+#define  CMD_LEN    4
+
+const int Pos_cmd = 20;
+const int Pos_msg = 24;
+const int Pos_NewMsgMarkStrEnd = 1008;
+const int newMsgMaxDataSpace = 984;
 
 typedef  u_char BYTE;
 typedef  BYTE  ConnMark;
@@ -34,16 +39,15 @@ typedef  BYTE  ConnMark;
 #define  ConnMark_Def   0xFF
 
 
-//接口收到recvBuf为NULL表示断开连接
 class IServerRecver
 {
 public:
-    virtual void OnRec(ConnMark mark,char *recvBuf, int BufLen)=0;
+	virtual void OnRec(ConnMark mark,u_int32_t cmd,char *recvBuf, int BufLen)=0;
 };
 class IClientRecver
 {
 public:
-    virtual void OnRec(char *recvBuf, int BufLen)=0;
+	virtual void OnRec(u_int32_t cmd,char *recvBuf, int BufLen)=0;
 };
 
 
@@ -51,41 +55,48 @@ public:
 class  IRevFinish
 {
 public:
-    virtual void OnRevFinish(char *recvBuf,u_int32_t BufLen)=0;
+    virtual void OnRevFinish(u_int32_t cmd,char *recvBuf,u_int32_t BufLen)=0;
 };
 class MsgCtl
 {
     struct Receiver
     {
-        Receiver():m_revSize(0),m_msgSize(0){}
+        Receiver():m_revSize(0),m_msgSize(0),m_cmd(0){}
         void rev(BYTE *recvBuf,IRevFinish* Fun)
         {
-            if (isNewMsgMark(recvBuf))
-            {
-                m_revSize = 0;
-                m_msgSize = *((NewMsgSizeType*)(recvBuf + GUID_LEN));
-                if (m_buf.size() < m_msgSize) m_buf.resize(m_msgSize);
-                return ;
-            }
+			
+			if (isNewMsgMark(recvBuf))
+			{	
+				m_revSize = 0;
+				m_msgSize = *((u_int32_t*)(recvBuf + GUID_LEN));
+				m_cmd = *((u_int32_t*)(recvBuf + Pos_cmd));
+				if (m_buf.size() < m_msgSize) m_buf.resize(m_msgSize);
 
-
+				if (m_msgSize <= newMsgMaxDataSpace)
+				{
+					memcpy(&m_buf[0], recvBuf + Pos_msg, m_msgSize);
+					MsgFinish(Fun);
+				}
+				return ;
+			}
+			
+	
             int CpySize = SOCKET_REV_BUF_SIZE;
             if (m_revSize + SOCKET_REV_BUF_SIZE > m_msgSize)  CpySize = m_msgSize - m_revSize;
-
-
-            if (0 == m_msgSize) return;
-            if (m_buf.size() < m_revSize + CpySize) return;
 
             memcpy(&m_buf[m_revSize],recvBuf,CpySize);
             m_revSize = m_revSize + CpySize;
 
-
             if(m_revSize != m_msgSize) return;
 
-            Fun->OnRevFinish(&m_buf[0],m_revSize);
-            m_msgSize = 0;
-            m_revSize = 0;
+            MsgFinish(Fun);
         }
+		void MsgFinish(IRevFinish* Fun)
+		{
+			Fun->OnRevFinish(m_cmd,&m_buf[0],m_msgSize);
+			m_msgSize = 0;
+			m_revSize = 0;
+		}
         void Release()
         {
             m_buf.clear();
@@ -94,10 +105,7 @@ class MsgCtl
         bool isNewMsgMark(const BYTE *recvBuf)
         {
             if (!checkGUID(recvBuf,NewMsgMarkStr)) return false;
-            int EndGDIDPos = SOCKET_REV_BUF_SIZE - GUID_LEN;
-            if(!checkGUID(recvBuf,NewMsgMarkStrEnd,EndGDIDPos)) return false;
-            for(int i = GUID_LEN + NewMsg_Size_LEN; i < EndGDIDPos; ++i)
-                if (0 != recvBuf[i]) return false;
+            if(!checkGUID(recvBuf,NewMsgMarkStrEnd,Pos_NewMsgMarkStrEnd)) return false;
             return true;
         }
         bool checkGUID(const BYTE *recvBuf,const char *guid,int posStart = 0)
@@ -111,42 +119,45 @@ class MsgCtl
         }
         u_int32_t m_revSize;
         u_int32_t m_msgSize;
+		u_int32_t m_cmd;
         string m_buf;
     };
     struct Sender
     {
-        bool SendMsg(int sock,const char * msg,NewMsgSizeType msgSize)
+        bool SendMsg(int sock,u_int32_t cmd,const char * msg,u_int32_t msgSize)
         {
-            char SendBuf[SOCKET_REV_BUF_SIZE] = {0};
+			char SendBuf[SOCKET_REV_BUF_SIZE] = {0};
 
-            memcpy(SendBuf,NewMsgMarkStr,GUID_LEN);
-            memcpy(SendBuf + GUID_LEN,&msgSize,NewMsg_Size_LEN);
-            memcpy(SendBuf + SOCKET_REV_BUF_SIZE - GUID_LEN,NewMsgMarkStrEnd,GUID_LEN);
-            bool suc = (SOCKET_REV_BUF_SIZE ==  send(sock, SendBuf, SOCKET_REV_BUF_SIZE, 0));
-            if(!suc) return false;
-
+			memcpy(SendBuf,NewMsgMarkStr,GUID_LEN);
+			memcpy(SendBuf + GUID_LEN,&msgSize,NewMsg_Size_LEN);
+			memcpy(SendBuf + Pos_cmd,  &cmd, CMD_LEN);
+			memcpy(SendBuf + Pos_NewMsgMarkStrEnd,NewMsgMarkStrEnd,GUID_LEN);
+			if (msgSize <= newMsgMaxDataSpace)
+			{
+				memcpy(SendBuf + Pos_msg, msg, msgSize);
+				return (SOCKET_REV_BUF_SIZE == send(sock, SendBuf, SOCKET_REV_BUF_SIZE, 0));
+			}
+			bool suc = (SOCKET_REV_BUF_SIZE ==  send(sock, SendBuf, SOCKET_REV_BUF_SIZE, 0));
+			if(!suc) return false;
 
             u_int32_t hasSendSize = 0;
-            while(1)
-            {
-                memset(SendBuf,0,SOCKET_REV_BUF_SIZE);
-                if (msgSize <= SOCKET_REV_BUF_SIZE)
-                {
-                    memcpy(SendBuf,msg + hasSendSize,msgSize);
+			while(1)
+			{
+				if (msgSize <= SOCKET_REV_BUF_SIZE)
+				{
+					memcpy(SendBuf,msg + hasSendSize,msgSize);
+					return SOCKET_REV_BUF_SIZE ==  send(sock, SendBuf, SOCKET_REV_BUF_SIZE, 0);
+				}
+			
 
-                    return SOCKET_REV_BUF_SIZE ==  send(sock, SendBuf, SOCKET_REV_BUF_SIZE, 0);
-                }
+				memcpy(SendBuf,msg + hasSendSize,SOCKET_REV_BUF_SIZE);
+				suc = (SOCKET_REV_BUF_SIZE ==  send(sock, SendBuf, SOCKET_REV_BUF_SIZE, 0));
+				if(!suc) return false;
 
+				hasSendSize += SOCKET_REV_BUF_SIZE;
+				msgSize -= SOCKET_REV_BUF_SIZE;
+			}
 
-                memcpy(SendBuf,msg + hasSendSize,SOCKET_REV_BUF_SIZE);
-
-                suc = (SOCKET_REV_BUF_SIZE ==  send(sock, SendBuf, SOCKET_REV_BUF_SIZE, 0));
-                if(!suc) return false;
-
-
-                hasSendSize += SOCKET_REV_BUF_SIZE;
-                msgSize -= SOCKET_REV_BUF_SIZE;
-            }
         }
     };
 public:
@@ -154,9 +165,9 @@ public:
     {
         m_Receiver.rev(recvBuf,Fun);
     }
-    bool Send(int sock,const char * msg,NewMsgSizeType msgSize)
+    bool Send(int sock,u_int32_t cmd,const char * msg,u_int32_t msgSize)
     {
-        return m_Sender.SendMsg(sock,msg,msgSize);
+        return m_Sender.SendMsg(sock,cmd,msg,msgSize);
     }
     void Release()
     {
@@ -193,10 +204,10 @@ public:
         m_Conn = 0;
         m_MsgCtl.Release();
     }
-    bool Send(const char * msg,NewMsgSizeType msgSize)
+    bool Send(u_int32_t cmd,const char * msg,u_int32_t msgSize)
     {
         if (!m_bConnect) return false;
-        return m_MsgCtl.Send(m_Conn,msg,msgSize);
+        return m_MsgCtl.Send(m_Conn,cmd,msg,msgSize);
     }
     bool ConnectCorrect() { return m_bConnect; }
     BYTE GetMark(){return m_ConnMark; }
@@ -213,14 +224,14 @@ private:
 
         m_bConnect = false;
 
-        OnRevFinish(NULL,0);
+        OnRevFinish(0xFFFFFFFF,NULL,0);
 
         return true;
     }
-    virtual void OnRevFinish(char *recvBuf,u_int32_t BufLen)
+    virtual void OnRevFinish(u_int32_t cmd,char *recvBuf,u_int32_t BufLen)
     {
-        if (NULL != m_pIServerRecver) m_pIServerRecver->OnRec(m_ConnMark,recvBuf,BufLen);
-        else m_pIClientRecver->OnRec(recvBuf,BufLen);
+        if (NULL != m_pIServerRecver) m_pIServerRecver->OnRec(m_ConnMark,cmd,recvBuf,BufLen);
+        else m_pIClientRecver->OnRec(cmd,recvBuf,BufLen);
     }
     void Recv()
     {
@@ -312,16 +323,16 @@ public:
 
         return true;
     }
-    bool SendToAllConn(const char * msg,NewMsgSizeType msgSize)
+    bool SendToAllConn(u_int32_t cmd,const char * msg,u_int32_t msgSize)
     {
-        return SendToConn(msg,msgSize);
+        return SendToConn(cmd,msg,msgSize);
     }
-    bool SendToMarkConn( BYTE mark,const char * msg,NewMsgSizeType msgSize)
+    bool SendToMarkConn( BYTE mark,u_int32_t cmd,const char * msg,u_int32_t msgSize)
     {
-        return SendToConn(msg,msgSize,mark);
+        return SendToConn(cmd,msg,msgSize,mark);
     }
 private:
-    bool SendToConn(const char * msg,NewMsgSizeType msgSize,BYTE mark = ConnMark_Def)
+    bool SendToConn(u_int32_t cmd,const char * msg,u_int32_t msgSize,BYTE mark = ConnMark_Def)
     {
         bool sendSuc = false;
         pthread_mutex_lock(&m_lock);
@@ -331,7 +342,7 @@ private:
 
             if(mark != ConnMark_Def)
                 if(mark != (*it)->GetMark()) continue;
-            sendSuc = (*it)->Send(msg, msgSize);
+            sendSuc = (*it)->Send(cmd,msg, msgSize);
         }
         pthread_mutex_unlock(&m_lock);
         return sendSuc;
@@ -410,13 +421,13 @@ public:
 
         return true;
     }
-    bool Send(const char * msg,NewMsgSizeType msgSize)
+    bool Send(u_int32_t cmd,const char * msg,u_int32_t msgSize)
     {
         if (NULL == m_Connect) return false;
 
         if (!m_Connect->ConnectCorrect()) return false;
 
-        return m_Connect->Send(msg,msgSize);
+        return m_Connect->Send(cmd,msg,msgSize);
     }
 private:
     CSocketConn* m_Connect;

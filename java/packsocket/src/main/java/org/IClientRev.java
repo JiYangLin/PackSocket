@@ -2,5 +2,5 @@ package org;
 
 public interface IClientRev
 {
-    void Rev(byte[] recvBytes, int revSize, String erroMsg);
+    void Rev(int cmd,byte[] recvBytes, int revSize);
 }

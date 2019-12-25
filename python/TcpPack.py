@@ -6,13 +6,18 @@ import time
 
 REV_LEN = 1024
 MAX_LISTEN_NUM = 20
-GUID_LEN = 32
+GUID_LEN = 16
 NewMsg_Size_LEN = 4
+CMD_LEN = 4
+Pos_cmd = 20
+Pos_msg = 24
+Pos_NewMsgMarkStrEnd = 1008
+newMsgMaxDataSpace = 984
 MarkLen = 1
 ConnMark_Def = 0xFF
 
-# Server: void IServerRev(byte mark, byte[] recvBytes,   erroMsg );
-# Client: void IClientRev(byte[] recvBytes,   erroMsg);
+# Server: void IServerRev(byte mark, int cmd,byte[] recvBytes,revlen);
+# Client: void IClientRev(int cmd,byte[] recvBytes,revlen);
 class newMsgMark:
     def __init__(self):
         super().__init__()
@@ -26,14 +31,12 @@ class newMsgMark:
         for i in range(GUID_LEN):
             if self.NewMsgMarkStrEnd[i] != recvBuf[i + EndGDIDPos]:
                  return False
-        for i in range(GUID_LEN + NewMsg_Size_LEN,EndGDIDPos):
-            if 0 != recvBuf[i]:
-                 return False
         return True
 class Receiver:
     def __init__(self):
         self.__revSize = 0
         self.__msgSize = 0
+        self.__cmd = 0
         self.__newMsgMark =  newMsgMark()
         self.__InitBuf()
     def __InitBuf(self,bufsize=REV_LEN):
@@ -44,25 +47,29 @@ class Receiver:
     def rev(self,recvBuf, RevFinishFun):
         if self.__newMsgMark.isNewMsgMark(recvBuf):
             self.__revSize = 0
-            self.__msgSize = struct.unpack('<I', recvBuf[GUID_LEN:GUID_LEN+NewMsg_Size_LEN])[0]
+            self.__msgSize = struct.unpack('<I', recvBuf[GUID_LEN:Pos_cmd])[0]
+            self.__cmd = struct.unpack('<I', recvBuf[Pos_cmd:Pos_msg])[0]
             if len(self.__buf) < self.__msgSize: self.__InitBuf(self.__msgSize)
+            if self.__msgSize <= newMsgMaxDataSpace:
+                for i in range(0, self.__msgSize): self.__buf[i] = recvBuf[i+Pos_msg]
+                self.__MsgFinish(RevFinishFun)
             return
         
         CpySize = REV_LEN
         if self.__revSize + REV_LEN > self.__msgSize:
             CpySize = self.__msgSize - self.__revSize
 
-        if 0 == self.__msgSize: return
-        if len(self.__buf) < self.__revSize + CpySize: return
-
         for i in range(0,CpySize):self.__buf[self.__revSize+i] = recvBuf[i]
         self.__revSize = self.__revSize + CpySize
         
         if self.__revSize != self.__msgSize: return
-
-        RevFinishFun(self.__buf, self.__revSize)
+        self.__MsgFinish(RevFinishFun)
+        
+    def __MsgFinish(self,RevFinishFun):
+        RevFinishFun(self.__cmd,self.__buf, self.__msgSize)
         self.__msgSize = 0
         self.__revSize = 0
+
 class Sender:
     def __InitBuf(self):
         self.__SendBuf = bytearray()
@@ -76,20 +83,23 @@ class Sender:
         by = bytes(self.__SendBuf)
         sock.send(by)
 
-    def SendMsg(self,sock, msg):
+    def SendMsg(self,sock,cmd, msg):
         msgSize = len(msg)
-        self.__InitBuf()
+        
         for i in range(0,GUID_LEN): self.__SendBuf[i] = self.__newMsgMark.NewMsgMarkStr[i]
         msgSizeBytes = struct.pack('<I',msgSize)
-        for i in range(0,4): self.__SendBuf[i+GUID_LEN] = msgSizeBytes[i]
-        pos = REV_LEN - GUID_LEN
-        for i in range(0,GUID_LEN): self.__SendBuf[i + pos] = self.__newMsgMark.NewMsgMarkStrEnd[i]
+        for i in range(0,NewMsg_Size_LEN): self.__SendBuf[i+GUID_LEN] = msgSizeBytes[i]
+        cmdBytes = struct.pack('<I',cmd)
+        for i in range(0,CMD_LEN): self.__SendBuf[i+Pos_cmd] = cmdBytes[i]
+        for i in range(0,GUID_LEN): self.__SendBuf[i + Pos_NewMsgMarkStrEnd] = self.__newMsgMark.NewMsgMarkStrEnd[i]
+        if msgSize <= newMsgMaxDataSpace:
+            for i in range(0,msgSize): self.__SendBuf[i+Pos_msg] = msg[i]
+            self.__Send(sock)
+            return
         self.__Send(sock)
 
         hasSendSize = 0
         while True:
-            self.__InitBuf()
-
             if msgSize <= REV_LEN:
                 for i in range(0,msgSize): self.__SendBuf[i] = msg[i+hasSendSize]
                 self.__Send(sock)
@@ -106,8 +116,8 @@ class MsgCtl:
         self.__Sender =  Sender()
     def Rev(self,recvBuf, RevFinishFun):
         self.__Receiver.rev(recvBuf, RevFinishFun)
-    def Send(self,sock, msg):
-        self.__Sender.SendMsg(sock, msg)
+    def Send(self,sock,cmd, msg):
+        self.__Sender.SendMsg(sock, cmd,msg)
 class Connect:
     def __init__(self,_conn, _IServerRev, _IClientRev):
         self.__MsgCtl = MsgCtl()
@@ -126,16 +136,15 @@ class Connect:
         self.__revThread.start()
     def Close(self):
         if(None != self.__conn): self.__conn.close() 
-    def Rev(self, msg,  msgSize,  erro):
-        if None != msg : msg = msg[0:msgSize]
-        if (None != self.__IServerRev): self.__IServerRev(self.__ConnMark, msg, erro)
-        else: self.__IClientRev.Rev(msg, erro)
+    def Rev(self, cmd, msg,  msgSize):
+        if (None != self.__IServerRev): self.__IServerRev(self.__ConnMark, cmd,msg,msgSize)
+        else: self.__IClientRev(cmd,msg,msgSize)
     def __OnRev(self):
         try:
             self.OnRev()
         except Exception as e:
             self.connectNormal = False
-            self.Rev(None,0,e)
+            self.Rev(0,None,0)
             print(self.__ConnMark)
             print(e)    
 
@@ -160,11 +169,11 @@ class Connect:
             recBufPos += BufLen
             if recBufPos != REV_LEN: continue
             recBufPos = 0
-            self.__MsgCtl.Rev(recvBytes,lambda revByte, revSize: self.Rev(revByte, revSize, ""))
+            self.__MsgCtl.Rev(recvBytes,lambda cmd, revByte, revSize: self.Rev(cmd,revByte, revSize))
     
-    def Send(self,msg):
+    def Send(self,cmd,msg):
         try:
-            self.__MsgCtl.Send(self.__conn, msg)
+            self.__MsgCtl.Send(self.__conn, cmd,msg)
         except Exception as e:
             print(e)
             return False
@@ -198,11 +207,11 @@ class SocketServer:
     def __RemoveErroConnect(self):
         self.__SocketConnect = list(filter(lambda x: x.connectNormal == True,self.__SocketConnect))
 
-    def SendToAllConn(self,msg):
-        self.__SendToConn(msg)   
-    def SendToMarkConn(self, mark, msg):
-        self.__SendToConn(msg, mark)
-    def __SendToConn(self, msg,  mark = ConnMark_Def):
+    def SendToAllConn(self,cmd,msg):
+        self.__SendToConn(cmd,msg)   
+    def SendToMarkConn(self, mark,cmd, msg):
+        self.__SendToConn(cmd,msg, mark)
+    def __SendToConn(self, cmd,msg,  mark = ConnMark_Def):
         self.__lock.acquire()
         self.__lock.acquire()
         for conn in self.__SocketConnect:
@@ -211,7 +220,7 @@ class SocketServer:
             if mark != ConnMark_Def:
                 if mark != conn.GetConnMark(): continue
             
-            conn.Send(msg)
+            conn.Send(cmd,msg)
             
         self.__lock.release()
         self.__lock.release()
@@ -226,6 +235,6 @@ class SocketClient:
         socketClient.send(struct.pack('<B',mark))      
         self.__Connect = Connect(socketClient, None, IClientRev)
 
-    def Send(self, msg):
+    def Send(self,cmd,msg):
         if None == self.__Connect: return False
-        return self.__Connect.Send(msg)
+        return self.__Connect.Send(cmd,msg)

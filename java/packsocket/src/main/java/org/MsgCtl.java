@@ -1,13 +1,13 @@
 package org;
 
-import java.io.*;  
-import java.net.*;  
+import java.io.*;
+import java.net.*;
 
 public class MsgCtl
 {
     interface IRevFinish{
 
-        public void RevFinish(byte[] revByte, int revSize);
+        public void RevFinish(int cmd,byte[] revByte,int revlen);
     }
 
 
@@ -15,6 +15,7 @@ public class MsgCtl
     {
         int m_revSize = 0;
         int m_msgSize = 0;
+        int m_cmd = 0;
         byte[] m_buf = new byte[Param.REV_LEN];
         newMsgMark m_newMsgMark = new newMsgMark();
 
@@ -24,25 +25,31 @@ public class MsgCtl
             {
                 m_revSize = 0;
                 m_msgSize = Param.byte4ToInt(recvBuf, Param.GUID_LEN);
-                if (m_buf.length < m_msgSize) m_buf = new byte[m_msgSize];
+                m_cmd = Param.byte4ToInt(recvBuf, Param.Pos_cmd);
+                if(m_msgSize > m_buf.length) m_buf = new byte[m_msgSize];
+
+                if (m_msgSize <= Param.newMsgMaxDataSpace)
+                {
+                    System.arraycopy(recvBuf, Param.Pos_msg, m_buf, 0,m_msgSize);
+                    MsgFinish(Fun);
+                }
                 return;
             }
 
 
-            int CpySize = (int)Param.REV_LEN;
-            if (m_revSize + (int)Param.REV_LEN > m_msgSize) CpySize = (int)(m_msgSize - m_revSize);
+            int CpySize = Param.REV_LEN;
+            if (m_revSize + Param.REV_LEN > m_msgSize) CpySize = (int)(m_msgSize - m_revSize);
 
-
-            if (0 == m_msgSize) return;
-            if (m_buf.length < m_revSize + CpySize) return;
-
-            for(int i = 0 ; i< CpySize;++i) m_buf[m_revSize+i] = recvBuf[i];
+            System.arraycopy(recvBuf,0,m_buf,m_revSize,CpySize);
             m_revSize = m_revSize + CpySize;
-
 
             if (m_revSize != m_msgSize) return;
 
-            Fun.RevFinish(m_buf, m_revSize);
+            MsgFinish(Fun);
+        }
+        void MsgFinish(IRevFinish Fun)
+        {
+            Fun.RevFinish(m_cmd,m_buf,m_msgSize);
             m_msgSize = 0;
             m_revSize = 0;
         }
@@ -52,27 +59,34 @@ public class MsgCtl
         byte[] SendBuf = new byte[(int)Param.REV_LEN];
         newMsgMark m_newMsgMark = new newMsgMark();
 
-        public void SendMsg(Socket sock, byte[] msg, int msgSize)
+        public void SendMsg(Socket sock, int cmd,byte[] msg, int msgSize)
         {
             try
             {
-                _SendMsg(sock,msg,msgSize);
+                _SendMsg(sock,cmd,msg,msgSize);
             }catch(Exception e)
             {
                 System.out.println(e);
             }
             
         }
-        void _SendMsg(Socket sock, byte[] msg, int msgSize) throws IOException
+        void _SendMsg(Socket sock,int cmd, byte[] msg, int msgSize) throws IOException
         {
-            for(int i = 0 ; i < Param.REV_LEN;++i) SendBuf[i] = 0;
+            System.arraycopy(m_newMsgMark.NewMsgMarkStr,0,SendBuf,0,Param.GUID_LEN);
+            byte[] sizeBytes = Param.intToByte4(msgSize); 
+            System.arraycopy(sizeBytes,0,SendBuf,Param.GUID_LEN,sizeBytes.length);
+            byte[] cmdBytes = Param.intToByte4(cmd);
+            System.arraycopy(cmdBytes,0,SendBuf,Param.Pos_cmd,cmdBytes.length);
+            System.arraycopy(m_newMsgMark.NewMsgMarkStrEnd,0,SendBuf,Param.Pos_NewMsgMarkStrEnd,Param.GUID_LEN);
 
-            for(int i = 0 ; i < Param.GUID_LEN;++i) SendBuf[i] = m_newMsgMark.NewMsgMarkStr[i];
-            byte[] sizeBytes = Param.intToByte4(msgSize);
-            
-            for(int i = 0 ; i < sizeBytes.length;++i) SendBuf[i+Param.GUID_LEN] = sizeBytes[i];
-            int pos = Param.REV_LEN - Param.GUID_LEN;
-            for(int i = 0 ; i < Param.GUID_LEN;++i) SendBuf[i+pos] = m_newMsgMark.NewMsgMarkStrEnd[i];
+            if (msgSize <= Param.newMsgMaxDataSpace)
+            {
+                System.arraycopy(msg,0,SendBuf,Param.Pos_msg,msgSize);
+                DataOutputStream data = new DataOutputStream(sock.getOutputStream());
+                data.write(SendBuf);
+                return;
+            }
+
 
             DataOutputStream data = new DataOutputStream(sock.getOutputStream());
             data.write(SendBuf);
@@ -80,21 +94,18 @@ public class MsgCtl
             int hasSendSize = 0;
             while (true)
             {
-                for(int i = 0 ; i < Param.REV_LEN;++i) SendBuf[i] = 0;
-
                 if (msgSize <= (int)Param.REV_LEN)
                 {
-                    for(int i = 0 ; i < msgSize;++i) SendBuf[i] = msg[i+hasSendSize];
+                    System.arraycopy(msg,hasSendSize,SendBuf,0,msgSize);
                     data.write(SendBuf);
                     return;
                 }
 
-                for(int i = 0 ; i < Param.REV_LEN;++i) SendBuf[i] = msg[i+hasSendSize];
+                System.arraycopy(msg,hasSendSize,SendBuf,0,Param.REV_LEN);
                 data.write(SendBuf);
 
-
-                hasSendSize += (int)Param.REV_LEN;
-                msgSize -= (int)Param.REV_LEN;
+                hasSendSize += Param.REV_LEN;
+                msgSize -= Param.REV_LEN;
             }
         }
     }
@@ -105,9 +116,9 @@ public class MsgCtl
     {
         m_Receiver.rev(recvBuf, Fun);
     }
-    public void Send(Socket sock, byte[] msg, int msgSize)
+    public void Send(Socket sock, int cmd,byte[] msg, int msgSize)
     {
-        m_Sender.SendMsg(sock, msg, msgSize);
+        m_Sender.SendMsg(sock, cmd,msg, msgSize);
     }
     Receiver m_Receiver = new Receiver();
     Sender m_Sender = new Sender();

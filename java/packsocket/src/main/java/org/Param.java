@@ -5,10 +5,17 @@ public class Param
     public  static final int REV_LEN = 1024; //固定每个数据长度
     public  static final int MAX_LISTEN_NUM = 20;
 
-    public  static final int GUID_LEN = 32;
+    public  static final int GUID_LEN = 16;
 
-    public  static final int NewMsg_Size_LEN = 4;
+    public static final int NewMsg_Size_LEN = 4;
+    public static final int CMD_LEN = 4;
 
+    public static final int Pos_cmd = 20;
+    public static final int Pos_msg = 24;
+    public static final int Pos_NewMsgMarkStrEnd = 1008;
+    public static final int newMsgMaxDataSpace = 984;
+
+    
     public  static final int MarkLen = 1;
     public  static final byte ConnMark_Def = (byte)0xFF;
 

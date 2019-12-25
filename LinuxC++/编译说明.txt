@@ -1,2 +1,1 @@
-g++ Client.cpp -lpthread -o cl
-g++ Server.cpp -lpthread -o ser
+g++ pkdemo.cpp -lpthread -o pkdm

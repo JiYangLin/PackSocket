@@ -22,9 +22,9 @@ public class SocketClient
             System.out.println(e);
         }
     }
-    public boolean Send(byte[] msg, int msgSize)
+    public boolean Send(int cmd,byte[] msg, int msgSize)
     {
         if (null == m_Connect) return false;
-        return m_Connect.Send(msg, msgSize);
+        return m_Connect.Send(cmd,msg, msgSize);
     }
 }

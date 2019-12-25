@@ -2,5 +2,5 @@ package org;
 
 public interface IServerRev
 {
-    public void Rev(byte mark, byte[] recvBytes, int revSize, String erroMsg);
+    public void Rev(byte mark, int cmd,byte[] recvBytes, int revSize);
 }
