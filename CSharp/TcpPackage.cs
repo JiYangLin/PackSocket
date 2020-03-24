@@ -226,7 +226,8 @@ namespace PackSocket
             {
 
                 BufLen = conn.Receive(recvBytes, recBufPos, Param.REV_LEN - recBufPos, 0);
-                recBufPos += BufLen;
+                if(BufLen <=0 ) throw new Exception("dis connect");
+				recBufPos += BufLen;
 
                 if (recBufPos != Param.REV_LEN) continue;
                 recBufPos = 0;
