@@ -375,8 +375,9 @@ private:
 
             m_Connect.remove_if(needRemove);
 
-            m_Connect.push_back(new CSocketConn(sockConn, m_pISocketRecver,NULL));
-            if (m_Connect.size() >= MAX_CONNECT_NUM) return;
+			if (m_Connect.size() >= MAX_CONNECT_NUM) close(sockConn);
+			else m_Connect.push_back(new CSocketConn(sockConn, m_pISocketRecver, NULL));
+			
             pthread_mutex_unlock(&m_lock);
         }
     }

@@ -372,8 +372,10 @@ private:
 				return false;
 			});
 
-			m_Connect.push_back(new CSocketConn(sockConn, m_pISocketRecver,NULL));
-			if (m_Connect.size() >= MAX_CONNECT_NUM) return;
+
+			if (m_Connect.size() >= MAX_CONNECT_NUM) closesocket(sockConn);
+			else m_Connect.push_back(new CSocketConn(sockConn, m_pISocketRecver, NULL));
+			
 			LeaveCriticalSection(&m_cs);			
 		}
 	}
