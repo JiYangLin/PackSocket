@@ -58,7 +58,6 @@ public:
 	}
 	void Run()
 	{
-		InitWinSocket();
 		cout << "======client=======" << endl;
 
 		cout << "input connect mark:" << endl;
