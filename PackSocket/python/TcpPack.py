@@ -21,8 +21,8 @@ ConnMark_Def = 0xFF
 class newMsgMark:
     def __init__(self):
         super().__init__()
-        self.NewMsgMarkStr = b"6DB62435625348A28426C876F6B04A88"
-        self.NewMsgMarkStrEnd = b"CE1D1E7C9DBF4951BB414B6D9D2AA1C1"
+        self.NewMsgMarkStr = b"4A6959616E674C696E6DB62435625348"
+        self.NewMsgMarkStrEnd = b"414B6D9D2AA1C14A6959616E674C696E"
     def isNewMsgMark(self,recvBuf):
         for i in range(GUID_LEN):
             if self.NewMsgMarkStr[i] != recvBuf[i]:

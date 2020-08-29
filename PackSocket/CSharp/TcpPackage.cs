@@ -39,10 +39,10 @@ namespace PackSocket
     {
         public newMsgMark()
         {
-            string _NewMsgMarkStr = "6DB62435625348A28426C876F6B04A88";
+            string _NewMsgMarkStr = "4A6959616E674C696E6DB62435625348";
             NewMsgMarkStr = Encoding.Default.GetBytes(_NewMsgMarkStr);
 
-            string _NewMsgMarkStrEnd = "CE1D1E7C9DBF4951BB414B6D9D2AA1C1";
+            string _NewMsgMarkStrEnd = "414B6D9D2AA1C14A6959616E674C696E";
             NewMsgMarkStrEnd = Encoding.Default.GetBytes(_NewMsgMarkStrEnd);
         }
         public byte[] NewMsgMarkStr { get; set; }

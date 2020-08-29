@@ -23,8 +23,8 @@ using namespace std;
 #define  SOCKET_REV_BUF_SIZE     1024   
 
 #define  GUID_LEN    16
-#define  NewMsgMarkStr    "6DB62435625348A28426C876F6B04A88"
-#define  NewMsgMarkStrEnd "CE1D1E7C9DBF4951BB414B6D9D2AA1C1"
+#define  NewMsgMarkStr    "4A6959616E674C696E6DB62435625348"
+#define  NewMsgMarkStrEnd "414B6D9D2AA1C14A6959616E674C696E"
 #define  NewMsg_Size_LEN  4
 #define  CMD_LEN    4
 

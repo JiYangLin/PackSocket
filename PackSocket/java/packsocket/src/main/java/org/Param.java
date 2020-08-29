@@ -2,7 +2,7 @@ package org;
 
 public class Param
 {
-    public  static final int REV_LEN = 1024; //固定每个数据长度
+    public  static final int REV_LEN = 1024;
     public  static final int MAX_LISTEN_NUM = 20;
 
     public  static final int GUID_LEN = 16;
