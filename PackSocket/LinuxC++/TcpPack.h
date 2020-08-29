@@ -190,6 +190,7 @@ public:
     {
         m_pIServerRecver = pIServerRecver;
         m_pIClientRecver = pIClientRecver;
+        if (pIServerRecver == 0 && pIClientRecver == 0) return;
         pthread_create(&m_Thread,0,RecvThread,this);
     }
     virtual ~CSocketConn()
@@ -392,7 +393,7 @@ private:
 
 
 
-class ClientSocket
+class ClientSocket:public IRevFinish
 {
 public:
     ClientSocket() :m_Connect(NULL){}
@@ -404,7 +405,7 @@ public:
 
     bool Start(ConnMark mark,const char *Ip,int port,IClientRecver *Recver)
     {
-        int sockConn = socket(AF_INET, SOCK_STREAM, 0);
+        m_sockConn = socket(AF_INET, SOCK_STREAM, 0);
         struct sockaddr_in addrSrv;
 
 
@@ -414,11 +415,11 @@ public:
         addrSrv.sin_addr = *((struct in_addr *)host->h_addr);
         bzero(&(addrSrv.sin_zero),8);
 
-        if (connect(sockConn, (struct sockaddr *)&addrSrv, sizeof(struct sockaddr)) == -1) return false;
+        if (connect(m_sockConn, (struct sockaddr *)&addrSrv, sizeof(struct sockaddr)) == -1) return false;
 
-        if (MarkLen != send(sockConn, (char*)&mark, MarkLen, 0)) return false;
+        if (MarkLen != send(m_sockConn, (char*)&mark, MarkLen, 0)) return false;
 
-        m_Connect = new CSocketConn(sockConn, NULL,Recver);
+        m_Connect = new CSocketConn(m_sockConn, NULL,Recver);
 
         return true;
     }
@@ -430,9 +431,44 @@ public:
 
         return m_Connect->Send(cmd,msg,msgSize);
     }
+
+public:
+	char* ProcRev(u_int32_t& cmdRev, int& lenRev)
+	{
+		char recvBuf[SOCKET_REV_BUF_SIZE] = { 0 };
+		int recBufPos = 0;
+		int BufLen = 0;
+		m_revData = 0;
+		while (true)
+		{
+			BufLen = recv(m_sockConn, recvBuf + recBufPos, SOCKET_REV_BUF_SIZE - recBufPos, 0);
+			recBufPos += BufLen;
+			if(BufLen <= 0) return 0;
+			if (recBufPos != SOCKET_REV_BUF_SIZE) continue;
+			recBufPos = 0;
+			m_MsgCtl.Rev((BYTE*)recvBuf, this);
+			if (0 != m_revData)
+            {
+                cmdRev = m_cmdRev;
+                lenRev = m_lenRev;
+                return m_revData;
+            }
+		}
+		return 0;
+	}
+private:
+    char* m_revData;
+    int m_cmdRev;
+    int m_lenRev;
+    virtual void OnRevFinish(u_int32_t cmd,char *recvBuf,u_int32_t BufLen)
+    {
+	    m_cmdRev = cmd;
+		m_lenRev = BufLen;
+		m_revData =  recvBuf;
+    }
 private:
     CSocketConn* m_Connect;
+    int m_sockConn;
+	MsgCtl m_MsgCtl;
 };
-
-
 #endif

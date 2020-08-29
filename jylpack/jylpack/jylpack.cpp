@@ -5,9 +5,8 @@ class Client
 	ClientSocket cl;
 	char *m_ip;
 	int m_port;
-	int m_cmd;
+	int m_cmd;//0 file  1:msg
 	int m_mark;
-	int m_type;//0 file  1:msg
 	list<string> m_data;
 
 
@@ -25,10 +24,9 @@ class Client
 		cout << endl;
 		cout << "=====================" << endl;
 		cout << "note: " << endl;
-		cout << "ip:port [-mark 0] [-cmd 0]  [-type 0]  dat..."<< endl;
+		cout << "ip:port [-mark 0] [-cmd 0]   dat..."<< endl;
 		cout << "127.0.0.1:1234 file1.txt file2.txt file3.txt" << endl;
-		cout << "127.0.0.1:1234 -type 1  msg...." << endl;
-		cout << "127.0.0.1:1234 -type 1  \"msg.  ...\"" << endl;
+		cout << "127.0.0.1:1234 -cmd 1  msg...." << endl;
 		cout << "=====================" << endl << endl;
 	}
 
@@ -62,7 +60,7 @@ class Client
 			fread_s(buf, len, len, 1, pf);
 			fclose(pf);
 			cout << "start send..." << endl;
-			if (!cl.Send(1, buf, len))
+			if (!cl.Send(m_cmd, buf, len))
 			{
 				cout << "send err" << endl;
 			}
@@ -132,11 +130,6 @@ class Client
 			if (pos >= argc) return -1;
 			m_cmd = atoi(argv[pos]);
 		}
-		else if (param == "type")
-		{
-			if (pos >= argc) return -1;
-			m_type = atoi(argv[pos]);
-		}
 		else
 		{
 			return 0;
@@ -174,8 +167,8 @@ public:
 		cout << "***** pack by jiyanglin *****" << endl << endl;
 		if (!ParseArg(argc, argv)) return;
 
-		if (m_type == 0) SendFile();
-		else if (m_type == 1) SendMsg();
+		if (m_cmd == 0) SendFile();
+		else if (m_cmd == 1) SendMsg();
 		else Err();
 	}
 };
