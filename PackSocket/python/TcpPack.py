@@ -16,8 +16,7 @@ newMsgMaxDataSpace = 984
 MarkLen = 1
 ConnMark_Def = 0xFF
 
-# Server: void IServerRev(byte mark, int cmd,byte[] recvBytes,revlen);
-# Client: void IClientRev(int cmd,byte[] recvBytes,revlen);
+
 class newMsgMark:
     def __init__(self):
         super().__init__()
@@ -130,10 +129,14 @@ class Connect:
         self.connectNormal = True
         self.__conn = _conn
         
-        self.__ProcRevThr  = True
+        if None ==  self.__IServerRev and None ==  self.__IClientRev:
+            return 
         self.__revThread = threading.Thread(target=self.__OnRev)  
         self.__revThread.setDaemon(True)  
         self.__revThread.start()
+    def GetConnMark(self):
+        return self.__ConnMark
+        
     def Close(self):
         if(None != self.__conn): self.__conn.close() 
     def Rev(self, cmd, msg,  msgSize):
@@ -156,12 +159,11 @@ class Connect:
         BufLen = 0
 
         if (self.__IServerRev != None):   
-            markBytes =  self.__conn.recv(REV_LEN)
+            markBytes =  self.__conn.recv(1)
             self.__ConnMark = markBytes[0]
             print("connect mark :" + str(self.__ConnMark))
 
         while(True):
-            if(self.__ProcRevThr == False): break 
             tempRevLen = REV_LEN - recBufPos
             tempRevBytes = self.__conn.recv(tempRevLen)            
             BufLen = len(tempRevBytes)
@@ -228,13 +230,39 @@ class SocketServer:
 class SocketClient:
     def __init__(self):
         self.__Connect = None
+        self.__socketClient = None
+        self.__MsgCtl = MsgCtl()
+        self.__RevData = None
 
     def Start(self,mark,  ip,  port, IClientRev):
-        socketClient = socket(AF_INET, SOCK_STREAM)
-        socketClient.connect((ip,port)) 
-        socketClient.send(struct.pack('<B',mark))      
-        self.__Connect = Connect(socketClient, None, IClientRev)
+        self.__socketClient = socket(AF_INET, SOCK_STREAM)
+        self.__socketClient.connect((ip,port)) 
+        self.__socketClient.send(struct.pack('<B',mark))      
+        self.__Connect = Connect(self.__socketClient, None, IClientRev)
 
     def Send(self,cmd,msg):
         if None == self.__Connect: return False
         return self.__Connect.Send(cmd,msg)
+
+
+    def ProcRev(self):
+        recvBytes = bytearray()
+        for i in range(REV_LEN):
+            recvBytes.append(0)
+        recBufPos = 0
+        BufLen = 0
+
+        self.__RevData = None
+        while(True):
+            tempRevLen = REV_LEN - recBufPos
+            tempRevBytes = self.__socketClient.recv(tempRevLen)            
+            BufLen = len(tempRevBytes)
+            for i in range(0,BufLen): recvBytes[recBufPos+i] = tempRevBytes[i]
+            recBufPos += BufLen
+            if recBufPos != REV_LEN: continue
+            recBufPos = 0
+            self.__MsgCtl.Rev(recvBytes,lambda cmd, revByte, revSize: self.__Rev(cmd,revByte, revSize))
+            if None != self.__RevData:
+                return self.__RevData
+    def __Rev(self,cmd,revByte, revSize):
+        self.__RevData = (cmd,revByte, revSize)

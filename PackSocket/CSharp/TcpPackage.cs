@@ -186,6 +186,7 @@ namespace PackSocket
             connectNormal = true;
             conn = _conn;
 
+            if (null == _IClientRev && null == m_IServerRev) return;
             revThread = new Thread(_OnRev);
             revThread.IsBackground = true;
             revThread.Start();
@@ -338,25 +339,58 @@ namespace PackSocket
     public class SocketClient
     {
         Connect m_Connect = null;
+        Socket m_Client = null;
+        MsgCtl m_MsgCtl = new MsgCtl();
         public void Start(byte mark, string IP, int prort, IClientRev revProc)
         {
             IPAddress address = IPAddress.Parse(IP);
             IPEndPoint endpoint = new IPEndPoint(address, prort);
-            Socket Client = new Socket(AddressFamily.InterNetwork, SocketType.Stream, ProtocolType.Tcp);
+            m_Client = new Socket(AddressFamily.InterNetwork, SocketType.Stream, ProtocolType.Tcp);
 
 
-            Client.Connect(endpoint);
+            m_Client.Connect(endpoint);
             byte[] by = new byte[1];
             by[0] = mark;
-            Client.Send(by, 1, 0);
-            m_Connect = new Connect(Client, null, revProc);
-
+            m_Client.Send(by, 1, 0);
+            m_Connect = new Connect(m_Client, null, revProc);
 
         }
         public bool Send(uint cmd, byte[] msg, uint msgSize)
         {
             if (null == m_Connect) return false;
             return m_Connect.Send(cmd, msg, msgSize);
+        }
+        public byte[] ProcRev(ref uint cmdRev, ref int lenRev)
+        {
+
+            byte[] recvBytes = new byte[Param.REV_LEN];
+            int recBufPos = 0;
+            int BufLen = 0;
+
+            uint cmdret = 0;
+            int lenret = 0;
+            byte[] revByteret = null;
+            while (true)
+            {
+
+                BufLen = m_Client.Receive(recvBytes, recBufPos, Param.REV_LEN - recBufPos, 0);
+                if (BufLen <= 0) return null;
+                recBufPos += BufLen;
+
+                if (recBufPos != Param.REV_LEN) continue;
+                recBufPos = 0;
+
+                m_MsgCtl.Rev(recvBytes, (uint cmd, byte[] revByte, int revLen) =>
+                {
+                     cmdret = cmd;
+                     lenret = revLen;
+                     revByteret = revByte;
+                });
+                if (null != revByteret) break;
+            }
+            cmdRev = cmdret;
+            lenRev = lenret;
+            return revByteret;
         }
     }
 }

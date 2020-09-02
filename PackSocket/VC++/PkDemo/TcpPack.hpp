@@ -311,7 +311,7 @@ public:
 		addrSrv.sin_family = AF_INET;
 		addrSrv.sin_port = htons(port);
 
-		if (SOCKET_ERROR == bind(m_sockSrv, (SOCKADDR*)&addrSrv, sizeof(SOCKADDR))) return false;
+		if (SOCKET_ERROR == ::bind(m_sockSrv, (SOCKADDR*)&addrSrv, sizeof(SOCKADDR))) return false;
 		if (SOCKET_ERROR == listen(m_sockSrv, MAX_CONNECT_NUM)) return false;
 
 		HANDLE h = ::CreateThread(NULL, 0, AcceptThread, this, 0, NULL);
