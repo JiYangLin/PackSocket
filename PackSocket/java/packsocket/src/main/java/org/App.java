@@ -2,18 +2,19 @@ package org;
 
 import java.util.Scanner;
 
-class Ser implements IServerRev
+class Ser implements IRev
 {
-    public void Rev(byte mark,int cmd, byte[] recvBytes, int revSize) {
-        if (null == recvBytes) return;
+    @Override
+    public void onRevData(RevData data) {
+        if (null == data) return;
 
-        String str = new String(recvBytes,0,revSize);  
+        String str = new String(data.revByte,0,data.revlen);  
         System.out.println(str);
     }
     public void Run()
     {
 
-        m_SocketServer.Start(1234, this);
+        m_SocketServer.StartServer(1234, this);
 
         System.out.println("=====服务器====");
 
@@ -55,13 +56,14 @@ class Ser implements IServerRev
 
 }
 
-class Client implements IClientRev
+class Client implements IRev
 {
-    public void Rev(int cmd,byte[] recvBytes, int revSize) {
-        if (null == recvBytes)
+    @Override
+    public void onRevData(RevData data) {
+        if (null == data)
             return;
 
-        String str = new String(recvBytes, 0, revSize);
+        String str = new String(data.revByte, 0, data.revlen);
         System.out.println(str);
     }
     public void Run()

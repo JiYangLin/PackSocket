@@ -3,19 +3,20 @@ package org;
 import java.io.*;
 import java.net.*;
 
-import org.MsgCtl.IRevFinish;
-
-public class Connect extends Thread implements IRevFinish
-{
-    public void RevFinish(int cmd,byte[] revByte, int revSize) {
-        Rev(cmd,revByte, revSize);
+public class Connect extends Thread implements IRev
+{    
+    @Override
+    public void onRevData(RevData revdata) {
+        revdata.mark = m_ConnMark;
+        if (null != m_IServerRev) m_IServerRev.onRevData(revdata);
+        else m_IClientRev.onRevData( revdata);
     }
 
 
     Socket conn = null;
     Thread revThread = null;
-    IServerRev m_IServerRev = null;
-    IClientRev m_IClientRev = null;
+    IRev m_IServerRev = null;
+    IRev m_IClientRev = null;
     MsgCtl m_MsgCtl = new MsgCtl();
     byte m_ConnMark = (byte)Param.ConnMark_Def;
     newMsgMark m_newMsgMark = new newMsgMark();
@@ -31,12 +32,13 @@ public class Connect extends Thread implements IRevFinish
             System.out.println(e);
         }
     }
-    public Connect(Socket _conn, IServerRev _IServerRev, IClientRev _IClientRev)
+    public Connect(Socket _conn, IRev iServerRev, IRev iClientRev)
     {
-        m_IServerRev = _IServerRev;
-        m_IClientRev = _IClientRev;
+        m_IServerRev = iServerRev;
+        m_IClientRev = iClientRev;
         connectNormal = true;
         conn = _conn;
+        if(null == iServerRev && null == iClientRev) return;
         revThread = new Thread(this);
         revThread.setDaemon(true);
         revThread.start();
@@ -49,16 +51,9 @@ public class Connect extends Thread implements IRevFinish
         catch (Exception e)
         {
             System.out.println(e);
-            //错误时接收数据为null作为通知
-            Rev(0,null, 0);
+            onRevData(null);
             connectNormal = false;
         }
-    }
-
-    void Rev(int cmd,byte[] revByte, int revSize)
-    {
-        if (null != m_IServerRev) m_IServerRev.Rev(m_ConnMark, cmd,revByte, revSize);
-        else m_IClientRev.Rev( cmd,revByte, revSize);
     }
     void OnRev() throws Exception
     {
@@ -77,7 +72,6 @@ public class Connect extends Thread implements IRevFinish
             BufLen = in.read(recvBytes, recBufPos, Param.REV_LEN - recBufPos);
             recBufPos += BufLen;
 
-            ////接收到足够一帧大小 Param.REV_LEN 后再执行
             if (recBufPos != (int)Param.REV_LEN) continue;
             recBufPos = 0;
             m_MsgCtl.Rev(recvBytes, this);
@@ -95,6 +89,7 @@ public class Connect extends Thread implements IRevFinish
         }
         return true;
     }
+
 
 
 }

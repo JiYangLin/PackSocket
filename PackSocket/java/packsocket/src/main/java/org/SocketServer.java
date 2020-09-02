@@ -7,10 +7,10 @@ public class SocketServer extends Thread
 {
     ServerSocket socketServer = null;
     Thread threadSocket = null;
-    IServerRev revProc = null;
+    IRev revProc = null;
     ArrayList<Connect> SocketConnect = new ArrayList<Connect>();
     Object lock = new Object();
-    public void Start(int port, IServerRev _revProc)
+    public void StartServer(int port, IRev _revProc)
     {
         try
         {

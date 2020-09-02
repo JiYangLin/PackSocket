@@ -5,32 +5,24 @@ import java.net.*;
 
 public class MsgCtl
 {
-    interface IRevFinish{
-
-        public void RevFinish(int cmd,byte[] revByte,int revlen);
-    }
-
-
     class Receiver
     {
+        RevData mRevdata = new RevData();
         int m_revSize = 0;
-        int m_msgSize = 0;
-        int m_cmd = 0;
-        byte[] m_buf = new byte[Param.REV_LEN];
         newMsgMark m_newMsgMark = new newMsgMark();
 
-        public void rev(byte[] recvBuf, IRevFinish Fun)
+        public void rev(byte[] recvBuf, IRev Fun)
         {
             if (m_newMsgMark.isNewMsgMark(recvBuf))
             {
                 m_revSize = 0;
-                m_msgSize = Param.byte4ToInt(recvBuf, Param.GUID_LEN);
-                m_cmd = Param.byte4ToInt(recvBuf, Param.Pos_cmd);
-                if(m_msgSize > m_buf.length) m_buf = new byte[m_msgSize];
+                mRevdata.revlen = Param.byte4ToInt(recvBuf, Param.GUID_LEN);
+                mRevdata.cmd = Param.byte4ToInt(recvBuf, Param.Pos_cmd);
+                if(mRevdata.revlen > mRevdata.revByte.length) mRevdata.revByte = new byte[mRevdata.revlen];
 
-                if (m_msgSize <= Param.newMsgMaxDataSpace)
+                if (mRevdata.revlen <= Param.newMsgMaxDataSpace)
                 {
-                    System.arraycopy(recvBuf, Param.Pos_msg, m_buf, 0,m_msgSize);
+                    System.arraycopy(recvBuf, Param.Pos_msg, mRevdata.revByte, 0,mRevdata.revlen);
                     MsgFinish(Fun);
                 }
                 return;
@@ -38,19 +30,19 @@ public class MsgCtl
 
 
             int CpySize = Param.REV_LEN;
-            if (m_revSize + Param.REV_LEN > m_msgSize) CpySize = (int)(m_msgSize - m_revSize);
+            if (m_revSize + Param.REV_LEN > mRevdata.revlen) CpySize = (int)(mRevdata.revlen - m_revSize);
 
-            System.arraycopy(recvBuf,0,m_buf,m_revSize,CpySize);
+            System.arraycopy(recvBuf,0,mRevdata.revByte,m_revSize,CpySize);
             m_revSize = m_revSize + CpySize;
 
-            if (m_revSize != m_msgSize) return;
+            if (m_revSize != mRevdata.revlen) return;
 
             MsgFinish(Fun);
         }
-        void MsgFinish(IRevFinish Fun)
+        void MsgFinish(IRev Fun)
         {
-            Fun.RevFinish(m_cmd,m_buf,m_msgSize);
-            m_msgSize = 0;
+            Fun.onRevData(mRevdata);
+            mRevdata.revlen = 0;
             m_revSize = 0;
         }
     }
@@ -112,7 +104,7 @@ public class MsgCtl
 
 
 
-    public void Rev(byte[] recvBuf, IRevFinish Fun)
+    public void Rev(byte[] recvBuf, IRev Fun)
     {
         m_Receiver.rev(recvBuf, Fun);
     }
