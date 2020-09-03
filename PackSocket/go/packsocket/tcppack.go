@@ -38,63 +38,65 @@ const (
 	connMarkDef         byte = 255
 )
 
-//IServerRecver serverimp
-type IServerRecver interface {
-	OnRec(mark byte, cmd uint32, recvBuf []byte, BufLen int)
+//RevData revdata
+type RevData struct {
+	mark      byte
+	cmd       uint32
+	recvBytes []byte
+	msglen    int
 }
 
-//IClientRecver clientimp
-type IClientRecver interface {
-	OnRec(cmd uint32, recvBuf []byte, BufLen int)
+func (_this *RevData) init() {
+	_this.mark = 0
+	_this.cmd = 0
+	_this.recvBytes = make([]byte, socketRevBufSize)
+	_this.msglen = 0
 }
 
-type iRevFinish interface {
-	onRevFinish(cmd uint32, recvBuf []byte, BufLen int)
+//IRev imp
+type IRev interface {
+	onRec(data *RevData)
 }
 
 /////////receiver
 type receiver struct {
 	mRevSize       int
-	mMsgSize       int
-	mCmd           uint32
-	mBuf           []byte
+	mRevData       RevData
 	mNewMsgMark    []byte
 	mNewMsgMarkEnd []byte
 }
 
 func (_this *receiver) init() {
 	_this.mRevSize = 0
-	_this.mMsgSize = 0
-	_this.mCmd = 0
-	_this.mBuf = make([]byte, socketRevBufSize)
+	_this.mRevData.init()
 	_this.mNewMsgMark = []byte(newMsgMarkStr)
 	_this.mNewMsgMarkEnd = []byte(newMsgMarkStrEnd)
 }
-func (_this *receiver) rev(recvBuf []byte, Fun iRevFinish) {
+func (_this *receiver) rev(recvBuf []byte, Fun IRev) {
 	if _this.isNewMsgMark(recvBuf) {
 		_this.mRevSize = 0
-		_this.mMsgSize = bytesToUInt32(recvBuf, guidLEN)
-		_this.mCmd = uint32(bytesToUInt32(recvBuf, posCmd))
-		if len(_this.mBuf) < int(_this.mMsgSize) {
-			_this.mBuf = make([]byte, _this.mMsgSize)
+		_this.mRevData.msglen = bytesToUInt32(recvBuf, guidLEN)
+		_this.mRevData.cmd = uint32(bytesToUInt32(recvBuf, posCmd))
+		if len(_this.mRevData.recvBytes) < int(_this.mRevData.msglen) {
+			_this.mRevData.recvBytes = make([]byte, _this.mRevData.msglen)
 		}
 
-		if _this.mMsgSize <= newMsgMaxDataSpace {
-			copy(_this.mBuf[0:_this.mMsgSize], recvBuf[posMsg:posMsg+_this.mMsgSize])
+		if _this.mRevData.msglen <= newMsgMaxDataSpace {
+			copy(_this.mRevData.recvBytes[0:_this.mRevData.msglen], recvBuf[posMsg:posMsg+_this.mRevData.msglen])
 			_this.msgFinish(Fun)
 		}
 		return
 	}
 
 	CpySize := socketRevBufSize
-	if _this.mRevSize+socketRevBufSize > _this.mMsgSize {
-		CpySize = _this.mMsgSize - _this.mRevSize
+	if _this.mRevSize+socketRevBufSize > _this.mRevData.msglen {
+		CpySize = _this.mRevData.msglen - _this.mRevSize
 	}
 
-	copy(_this.mBuf[_this.mRevSize:], recvBuf[0:CpySize])
+	copy(_this.mRevData.recvBytes[_this.mRevSize:], recvBuf[0:CpySize])
 	_this.mRevSize = _this.mRevSize + CpySize
 
-	if _this.mRevSize == _this.mMsgSize {
+	if _this.mRevSize == _this.mRevData.msglen {
 		_this.msgFinish(Fun)
 	}
 }
@@ -107,9 +109,9 @@ func (_this *receiver) isNewMsgMark(recvBuf []byte) bool {
 	}
 	return true
 }
-func (_this *receiver) msgFinish(Fun iRevFinish) {
-	Fun.onRevFinish(_this.mCmd, _this.mBuf, _this.mMsgSize)
-	_this.mMsgSize = 0
+func (_this *receiver) msgFinish(Fun IRev) {
+	Fun.onRec(&_this.mRevData)
+	_this.mRevData.msglen = 0
 	_this.mRevSize = 0
 }
 func (_this *receiver) checkGUID(recvBuf []byte, guid []byte, posStart int) bool {
@@ -177,8 +179,8 @@ func (_this *sender) SendMsg(sock net.Conn, cmd uint32, msg []byte, msgSize int)
 ////////socketConn
 type socketConn struct {
 	mConn           net.Conn
-	mPIServerRecver *IServerRecver
-	mPIClientRecver *IClientRecver
+	mPIServerRecver IRev
+	mPIClientRecver IRev
 
 	mSender   sender
 	mReceiver receiver
@@ -188,11 +190,12 @@ type socketConn struct {
 	mConnMark byte
 }
 
-func (_this *socketConn) onRevFinish(cmd uint32, recvBuf []byte, BufLen int) {
+func (_this *socketConn) onRec(data *RevData) {
 	if nil != _this.mPIServerRecver {
-		(*_this.mPIServerRecver).OnRec(_this.mConnMark, cmd, recvBuf, BufLen)
+		data.mark = _this.mConnMark
+		_this.mPIServerRecver.onRec(data)
 	} else {
-		(*_this.mPIClientRecver).OnRec(cmd, recvBuf, BufLen)
+		_this.mPIClientRecver.onRec(data)
 	}
 }
 func (_this *socketConn) revmsg(recvBuf []byte) int {
@@ -203,7 +206,7 @@ func (_this *socketConn) revmsg(recvBuf []byte) int {
 	}
 	return revlen
 }
-func (_this *socketConn) init(Conn net.Conn, pIServerRecver *IServerRecver, pIClientRecver *IClientRecver) {
+func (_this *socketConn) init(Conn net.Conn, pIServerRecver IRev, pIClientRecver IRev) {
 	_this.mConn = Conn
 	_this.mBConnect = true
 	_this.mConnMark = connMarkDef
@@ -215,45 +218,46 @@ func (_this *socketConn) init(Conn net.Conn, pIServerRecver *IServerRecver, pICl
 		if nil == pIClientRecver {
 			return
 		}
+		go func() {
+			recvBuf := make([]byte, socketRevBufSize)
+			recBufPos := 0
+			BufLen := 0
+
+			if _this.mPIServerRecver != nil {
+				BufLen = _this.revmsg(recvBuf[:1])
+				if _this.recvErro(BufLen <= 0) {
+					return
+				}
+				_this.mConnMark = recvBuf[0]
+			}
+
+			var Fun IRev = _this
+			for {
+
+				BufLen = _this.revmsg(recvBuf[recBufPos:])
+				recBufPos += BufLen
+
+				if _this.recvErro(BufLen <= 0) {
+					return
+				}
+
+				if recBufPos != socketRevBufSize {
+					continue
+				}
+				recBufPos = 0
+
+				_this.mReceiver.rev(recvBuf, Fun)
+			}
+		}()
 	}
-	go func() {
-		recvBuf := make([]byte, socketRevBufSize)
-		recBufPos := 0
-		BufLen := 0
-
-		if _this.mPIServerRecver != nil {
-			BufLen = _this.revmsg(recvBuf[:1])
-			if _this.recvErro(BufLen <= 0) {
-				return
-			}
-			_this.mConnMark = recvBuf[0]
-		}
-
-		var Fun iRevFinish = _this
-		for {
-
-			BufLen = _this.revmsg(recvBuf[recBufPos:])
-			recBufPos += BufLen
-
-			if _this.recvErro(BufLen <= 0) {
-				return
-			}
-
-			if recBufPos != socketRevBufSize {
-				continue
-			}
-			recBufPos = 0
-
-			_this.mReceiver.rev(recvBuf, Fun)
-		}
-	}()
 }
+
 func (_this *socketConn) recvErro(bErro bool) bool {
 	if !bErro {
 		return false
 	}
 	_this.mBConnect = false
-	_this.onRevFinish(0, nil, 0)
+	_this.onRec(nil)
 	_this.mConn.Close()
 	return true
 }
@@ -269,14 +273,14 @@ func (_this *socketConn) Send(cmd uint32, msg []byte, msgSize int) bool {
 //ServerSocket def
 type ServerSocket struct {
 	mSockSrv        net.Listener
-	mPISocketRecver *IServerRecver
+	mPISocketRecver IRev
 
 	mConnect *list.List
 	mLock    *sync.Mutex
 }
 
 //Start socket
-func (_this *ServerSocket) Start(port string, pISocketRecver *IServerRecver) bool {
+func (_this *ServerSocket) Start(port string, pISocketRecver IRev) bool {
 	_this.mLock = new(sync.Mutex)
 
 	_this.mConnect = list.New()
@@ -355,12 +359,9 @@ func (_this *ServerSocket) sendToConn(cmd uint32, msg []byte, msgSize int, mark 
 
 //ClientSocket def
 type ClientSocket struct {
-	mConnect    *socketConn
-	mReceiver   receiver
-	mConn       net.Conn
-	mCmdRev     uint32
-	mRecvBufRev []byte
-	mBufLenRev  int
+	mConnect  *socketConn
+	mReceiver receiver
+	mRevData  RevData
 }
 
 func (_this *ClientSocket) init() {
@@ -369,7 +370,7 @@ func (_this *ClientSocket) init() {
 }
 
 //Start startClinet
-func (_this *ClientSocket) Start(mark byte, IP string, port string, recver *IClientRecver) bool {
+func (_this *ClientSocket) Start(mark byte, IP string, port string, recver IRev) bool {
 	conn, err := net.DialTimeout("tcp", IP+":"+port, 2*time.Second)
 	if err != nil {
 		fmt.Println("connect error:", err)
@@ -387,7 +388,6 @@ func (_this *ClientSocket) Start(mark byte, IP string, port string, recver *ICli
 		return false
 	}
 
-	_this.mConn = conn
 	_this.mConnect = new(socketConn)
 	_this.mConnect.init(conn, nil, recver)
 	return true
@@ -402,20 +402,20 @@ func (_this *ClientSocket) Send(cmd uint32, msg []byte, msgSize int) bool {
 }
 
 //ProcRev callafterSend
-func (_this *ClientSocket) ProcRev() bool {
-	_this.mRecvBufRev = nil
+func (_this *ClientSocket) ProcRev() *RevData {
+	_this.mRevData.recvBytes = nil
 
 	recvBuf := make([]byte, socketRevBufSize)
 	recBufPos := 0
 	BufLen := 0
 
-	var Fun iRevFinish = _this
+	var Fun IRev = _this
 	for {
 		BufLen = _this.revmsg(recvBuf[recBufPos:])
 		recBufPos += BufLen
 
 		if BufLen <= 0 {
-			return false
+			return nil
 		}
 
 		if recBufPos != socketRevBufSize {
@@ -425,13 +425,13 @@ func (_this *ClientSocket) ProcRev() bool {
 
 		_this.mReceiver.rev(recvBuf, Fun)
 
-		if _this.mRecvBufRev != nil {
-			return true
+		if _this.mRevData.recvBytes != nil {
+			return &_this.mRevData
 		}
 	}
 }
 func (_this *ClientSocket) revmsg(recvBuf []byte) int {
-	revlen, err := _this.mConn.Read(recvBuf)
+	revlen, err := _this.mConnect.mConn.Read(recvBuf)
 	if err != nil {
 		fmt.Println("revmsg error:", err)
 		return 0
@@ -439,10 +439,10 @@ func (_this *ClientSocket) revmsg(recvBuf []byte) int {
 	return revlen
 }
 
-func (_this *ClientSocket) onRevFinish(cmd uint32, recvBuf []byte, BufLen int) {
-	_this.mCmdRev = cmd
-	_this.mRecvBufRev = recvBuf
-	_this.mBufLenRev = BufLen
+func (_this *ClientSocket) onRec(data *RevData) {
+	_this.mRevData.recvBytes = data.recvBytes
+	_this.mRevData.cmd = data.cmd
+	_this.mRevData.msglen = data.msglen
 }
 
 ////////
