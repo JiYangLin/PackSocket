@@ -7,7 +7,7 @@ public class Connect extends Thread implements IRev
 {    
     @Override
     public void onRevData(RevData revdata) {
-        revdata.mark = m_ConnMark;
+        if(null != revdata) revdata.mark = m_ConnMark;
         if (null != m_IServerRev) m_IServerRev.onRevData(revdata);
         else m_IClientRev.onRevData( revdata);
     }

@@ -180,7 +180,7 @@ namespace PackSocket
 
         public void onRevData(RevData data)
         {
-            data.mark = mConnMark;
+            if (null != data) data.mark = mConnMark;
             if (null != mIServerRev) mIServerRev.onRevData(data);
             else mIClientRev.onRevData(data);
         }

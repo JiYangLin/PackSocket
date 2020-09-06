@@ -192,7 +192,9 @@ type socketConn struct {
 
 func (_this *socketConn) onRec(data *RevData) {
 	if nil != _this.mPIServerRecver {
-		data.mark = _this.mConnMark
+		if nil != data {
+			data.mark = _this.mConnMark
+		}
 		_this.mPIServerRecver.onRec(data)
 	} else {
 		_this.mPIClientRecver.onRec(data)
