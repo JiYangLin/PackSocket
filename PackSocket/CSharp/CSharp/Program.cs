@@ -40,12 +40,24 @@ namespace CSharp
         }
         public void Run()
         {
-
-            m_SocketServer.Start(1234, this);
-
             Console.WriteLine("=====服务器====");
 
-            string str;
+
+            bool localAddr = false;
+            bool singleModel = false;
+
+            Console.WriteLine("localAddr Server?(Y/N)");
+            string str = Console.ReadLine();
+            if (str == "Y" || str == "y") localAddr = true;
+
+            Console.WriteLine("singleModel Server?(Y/N)");
+            str = Console.ReadLine();
+            if (str == "Y" || str == "y") singleModel = true;
+
+            m_SocketServer.Start(1234, this, localAddr, singleModel);
+
+    
+
             while (true)
             {
                 Console.WriteLine("输入客户端 mark:");

@@ -62,7 +62,10 @@ namespace PackSocket
         void onRevData(RevData data);
     }
 
-
+    public interface IMiss
+    {
+        void onMiss();
+    }
 
 
     class receiver
@@ -157,17 +160,18 @@ namespace PackSocket
         receiver mReceiver = new receiver();
         sender mSender = new sender();
         public byte mConnMark = 0xFF;
-        newMsgMark mNewMsgMark = new newMsgMark();
         public bool mConnectNormal = false;
+        IMiss mIMiss = null;
 
         public void Close()
         {
             mConn.Close();
         }
-        public connect(Socket _conn, IRev _IServerRev, IRev _IClientRev)
+        public connect(Socket _conn, IRev _IServerRev, IRev _IClientRev, IMiss _IMiss = null)
         {
             mIServerRev = _IServerRev;
             mIClientRev = _IClientRev;
+            mIMiss = _IMiss;
 
             mConnectNormal = true;
             mConn = _conn;
@@ -194,6 +198,7 @@ namespace PackSocket
             {
                 onRevData(null);
                 mConnectNormal = false;
+                if (mIMiss != null) mIMiss.onMiss();
             }
         }
 
@@ -228,7 +233,7 @@ namespace PackSocket
             {
                 mSender.SendMsg(mConn, cmd, msg, msgSize);
             }
-            catch (Exception ex)
+            catch (Exception)
             {
                 return false;
             }
@@ -243,24 +248,39 @@ namespace PackSocket
 //服务端
 namespace PackSocket
 {
-    public class SocketServer
+    public class SocketServer: IMiss
     {
         Socket mSocketServer = null;
         IRev mRevProc = null;
         List<connect> mSocketConnect = new List<connect>();
         Mutex mMutex = new Mutex();
+        bool mSingleModel = false;
 
-        public void Start(int port, IRev _revProc)
+        public void Start(int port, IRev _revProc,bool localAddr=false,bool singleModel = false)
         {
             mRevProc = _revProc;
+            mSingleModel = singleModel;
+
+            IPAddress ipa = IPAddress.Any;
+            if (localAddr) ipa = IPAddress.Loopback;
 
             mSocketServer = new Socket(AddressFamily.InterNetwork, SocketType.Stream, ProtocolType.Tcp);
-            IPEndPoint endpoint = new IPEndPoint(IPAddress.Any, port);
+            IPEndPoint endpoint = new IPEndPoint(ipa, port);
             mSocketServer.Bind(endpoint);
+            mSocketServer.Listen(param.MAX_LISTEN_NUM);
 
-            Thread threadSocket = new Thread(Accept);
-            threadSocket.IsBackground = true;
-            threadSocket.Start();
+            if(mSingleModel)
+            {
+                onMiss();
+            }
+            else
+            {
+                Thread threadSocket = new Thread(() => {
+                    while (true) Accept();
+                });
+                threadSocket.IsBackground = true;
+                threadSocket.Start();
+            }
         }
         public void SendToAllConn(uint cmd, byte[] msg, uint msgSize)
         {
@@ -285,18 +305,16 @@ namespace PackSocket
         }
 
         void Accept()
-        {
-            mSocketServer.Listen(param.MAX_LISTEN_NUM);
-            while (true)
-            {
-                Socket connSocket = mSocketServer.Accept();
+        {       
+           Socket connSocket = mSocketServer.Accept();
 
-                mMutex.WaitOne();
-                RemoveErroConnect();
-                connect conn = new connect(connSocket, mRevProc, null);
-                mSocketConnect.Add(conn);
-                mMutex.ReleaseMutex();
-            }
+           mMutex.WaitOne();
+           RemoveErroConnect();
+           connect conn = null;
+           if(mSingleModel) conn= new connect(connSocket, mRevProc, null,this);
+           conn = new connect(connSocket, mRevProc, null);
+           mSocketConnect.Add(conn);
+           mMutex.ReleaseMutex();
         }
 
         void RemoveErroConnect()
@@ -310,6 +328,15 @@ namespace PackSocket
                 return !conn.mConnectNormal;
             });
 
+        }
+
+        public void onMiss()
+        {
+            Thread threadSocket = new Thread(() => {
+                Accept();
+            });
+            threadSocket.IsBackground = true;
+            threadSocket.Start();
         }
     }
 }
