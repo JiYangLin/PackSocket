@@ -349,7 +349,7 @@ namespace PackSocket
     {
         connect mConnect = null;
         receiver mReceiver = null;
-        RevData mRevData = null;
+        RevData mRevData = new RevData();
         public void Start(byte mark, string IP, int prort, IRev revProc)
         {
             IPAddress address = IPAddress.Parse(IP);
@@ -371,9 +371,9 @@ namespace PackSocket
             if (null == mConnect) return false;
             return mConnect.Send(cmd, msg, msgSize);
         }
-        public RevData ProcRev(ref uint cmdRev, ref int lenRev)
+        public RevData ProcRev()
         {
-            if (mRevData == null) return null;
+            if (mReceiver == null) return null;
 
             byte[] recvBytes = new byte[param.socketRevBufSize];
             int recBufPos = 0;
