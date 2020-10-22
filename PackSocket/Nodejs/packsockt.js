@@ -218,6 +218,4 @@ let cl = new ClientSocket(0,function(cmd,datBuf,datlen){
    console.log(str);
 });
 
-cl.Start('127.0.0.1',1234,function(head,data){
-    console.log(data.toString('utf8',0,head.msgLen))
-});
+cl.Start('127.0.0.1',1234);
