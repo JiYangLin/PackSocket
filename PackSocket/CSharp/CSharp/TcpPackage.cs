@@ -256,14 +256,12 @@ namespace PackSocket
         Mutex mMutex = new Mutex();
         bool mSingleModel = false;
 
-        public void Start(int port, IRev _revProc,bool localAddr=false,bool singleModel = false)
+        public void Start(int port, IRev _revProc,bool singleModel = true)
         {
             mRevProc = _revProc;
             mSingleModel = singleModel;
 
             IPAddress ipa = IPAddress.Any;
-            if (localAddr) ipa = IPAddress.Loopback;
-
             mSocketServer = new Socket(AddressFamily.InterNetwork, SocketType.Stream, ProtocolType.Tcp);
             IPEndPoint endpoint = new IPEndPoint(ipa, port);
             mSocketServer.Bind(endpoint);
@@ -312,7 +310,7 @@ namespace PackSocket
            RemoveErroConnect();
            connect conn = null;
            if(mSingleModel) conn= new connect(connSocket, mRevProc, null,this);
-           conn = new connect(connSocket, mRevProc, null);
+           else conn = new connect(connSocket, mRevProc, null);
            mSocketConnect.Add(conn);
            mMutex.ReleaseMutex();
         }
