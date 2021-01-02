@@ -10,6 +10,10 @@ type Client struct {
 }
 
 func (_this *Client) onRec(data *RevData) {
+	if nil ==  data{
+		fmt.Println("disconnected ...");
+		return;
+	}
 	str := string(data.recvBytes[:data.msglen])
 	fmt.Println(str)
 }
@@ -33,6 +37,11 @@ type Server struct {
 }
 
 func (_this *Server) onRec(data *RevData) {
+	if nil ==  data{
+		fmt.Println("disconnected ...");
+		return;
+	}
+
 	str := string(data.recvBytes[:data.msglen])
 	fmt.Println(str)
 }

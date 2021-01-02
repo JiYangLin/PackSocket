@@ -220,38 +220,38 @@ func (_this *socketConn) init(Conn net.Conn, pIServerRecver IRev, pIClientRecver
 		if nil == pIClientRecver {
 			return
 		}
-		go func() {
-			recvBuf := make([]byte, socketRevBufSize)
-			recBufPos := 0
-			BufLen := 0
-
-			if _this.mPIServerRecver != nil {
-				BufLen = _this.revmsg(recvBuf[:1])
-				if _this.recvErro(BufLen <= 0) {
-					return
-				}
-				_this.mConnMark = recvBuf[0]
-			}
-
-			var Fun IRev = _this
-			for {
-
-				BufLen = _this.revmsg(recvBuf[recBufPos:])
-				recBufPos += BufLen
-
-				if _this.recvErro(BufLen <= 0) {
-					return
-				}
-
-				if recBufPos != socketRevBufSize {
-					continue
-				}
-				recBufPos = 0
-
-				_this.mReceiver.rev(recvBuf, Fun)
-			}
-		}()
 	}
+	go func() {
+		recvBuf := make([]byte, socketRevBufSize)
+		recBufPos := 0
+		BufLen := 0
+
+		if _this.mPIServerRecver != nil {
+			BufLen = _this.revmsg(recvBuf[:1])
+			if _this.recvErro(BufLen <= 0) {
+				return
+			}
+			_this.mConnMark = recvBuf[0]
+		}
+
+		var Fun IRev = _this
+		for {
+
+			BufLen = _this.revmsg(recvBuf[recBufPos:])
+			recBufPos += BufLen
+
+			if _this.recvErro(BufLen <= 0) {
+				return
+			}
+
+			if recBufPos != socketRevBufSize {
+				continue
+			}
+			recBufPos = 0
+
+			_this.mReceiver.rev(recvBuf, Fun)
+		}
+	}()
 }
 
 func (_this *socketConn) recvErro(bErro bool) bool {
